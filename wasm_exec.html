@@ -1,0 +1,90 @@
+<!doctype html>
+<!--
+Copyright 2018 The Go Authors. All rights reserved.
+Use of this source code is governed by a BSD-style
+license that can be found in the LICENSE file.
+-->
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<title>Go wasm</title>
+</head>
+
+<body>
+	<script src="wasm_exec.js"></script>
+	<script>
+		if (!WebAssembly.instantiateStreaming) { // polyfill
+			WebAssembly.instantiateStreaming = async (resp, importObject) => {
+				const source = await (await resp).arrayBuffer();
+				return await WebAssembly.instantiate(source, importObject);
+			};
+		}
+
+		let width = 640;
+		let height = 480;
+
+		let originalCanvas, originalContext,
+			processedCanvas, processedContext;
+		function initializeCanvas() {
+			originalCanvas = document.getElementById("original");
+			originalContext = originalCanvas.getContext("2d");
+			processedCanvas = document.getElementById("processed");
+			processedContext = processedCanvas.getContext("2d");
+		}
+
+		let sourceVideo;
+		function initializeVideo() {
+  		    sourceVideo = document.getElementById('source');
+  		    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: "user" } }).
+    			then((stream) => {
+					sourceVideo.srcObject = stream
+				});
+		}
+
+		let dspCallback;
+		function setDSPCallback(callback) {
+			dspCallback = callback
+			document.getElementById("renderButton").disabled = false;
+		}
+		function renderOriginal() {
+            originalContext.drawImage(sourceVideo, 0, 0, width, height);
+			const pixelData = originalContext.getImageData(0, 0, width, height);
+			dspCallback(pixelData.data);
+            // pixelData.data.set(webdsp.invert(pixelData.data));
+            // demoContext.putImageData(pixelData);
+            processedContext.putImageData(pixelData, 0, 0);
+            window.requestAnimationFrame(renderOriginal);
+        }
+		function renderProcessed(data) {
+			const pixelData = new ImageData(new Uint8ClampedArray(data), width, height);
+            processedContext.putImageData(pixelData, 0, 0);
+            window.requestAnimationFrame(renderOriginal);
+		}
+
+		const go = new Go();
+		let mod, inst;
+		WebAssembly.instantiateStreaming(fetch("demo.wasm"), go.importObject).then((result) => {
+			mod = result.module;
+			inst = result.instance;
+			initializeCanvas();
+			initializeVideo();
+			document.getElementById("runButton").disabled = false;
+		});
+
+		async function run() {
+			console.clear();
+			await go.run(inst);
+			inst = await WebAssembly.instantiate(mod, go.importObject); // reset instance
+		}
+	</script>
+
+	<video id="source" width="0" height="0" autoplay></video>
+	<canvas id="original" width="640" height="480"></canvas>	
+	<canvas id="processed" width="640" height="480"></canvas>	
+	</br>
+	<button onClick="run();" id="runButton" disabled>Run</button>
+	<button onClick="renderOriginal();" id="renderButton" disabled>Render</button>
+</body>
+
+</html>
