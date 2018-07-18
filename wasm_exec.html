@@ -21,22 +21,23 @@ license that can be found in the LICENSE file.
 			};
 		}
 
-		let width = 640;
-		let height = 480;
+		let width = 320;
+		let height = 240;
 
-		let originalCanvas, originalContext,
-			processedCanvas, processedContext;
+		let originalCanvas, originalContext, processedCanvas, processedContext, imageData;
 		function initializeCanvas() {
 			originalCanvas = document.getElementById("original");
 			originalContext = originalCanvas.getContext("2d");
 			processedCanvas = document.getElementById("processed");
 			processedContext = processedCanvas.getContext("2d");
+			imageData = new ImageData(width, height);
 		}
 
 		let sourceVideo;
 		function initializeVideo() {
   		    sourceVideo = document.getElementById('source');
-  		    navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: "user" } }).
+  		    navigator.mediaDevices.getUserMedia({ audio: false, video: { 
+				  facingMode: "user", width: {exact: width}, height: {exact: height} } }).
     			then((stream) => {
 					sourceVideo.srcObject = stream
 				});
@@ -45,46 +46,45 @@ license that can be found in the LICENSE file.
 		let dspCallback;
 		function setDSPCallback(callback) {
 			dspCallback = callback
-			document.getElementById("renderButton").disabled = false;
-		}
-		function renderOriginal() {
-            originalContext.drawImage(sourceVideo, 0, 0, width, height);
-			const pixelData = originalContext.getImageData(0, 0, width, height);
-			dspCallback(pixelData.data);
-            // pixelData.data.set(webdsp.invert(pixelData.data));
-            // demoContext.putImageData(pixelData);
-            processedContext.putImageData(pixelData, 0, 0);
-            window.requestAnimationFrame(renderOriginal);
-        }
-		function renderProcessed(data) {
-			const pixelData = new ImageData(new Uint8ClampedArray(data), width, height);
-            processedContext.putImageData(pixelData, 0, 0);
-            window.requestAnimationFrame(renderOriginal);
-		}
-
-		const go = new Go();
-		let mod, inst;
-		WebAssembly.instantiateStreaming(fetch("demo.wasm"), go.importObject).then((result) => {
-			mod = result.module;
-			inst = result.instance;
-			initializeCanvas();
+		    initializeCanvas();
 			initializeVideo();
-			document.getElementById("runButton").disabled = false;
-		});
-
-		async function run() {
-			console.clear();
-			await go.run(inst);
-			inst = await WebAssembly.instantiate(mod, go.importObject); // reset instance
+			renderData();
 		}
+		function renderData() {
+            processedContext.putImageData(imageData, 0, 0);
+            originalContext.drawImage(sourceVideo, 0, 0, width, height);
+			dspCallback(originalContext.getImageData(0, 0, width, height).data);
+		}
+		function saveData(data) {
+			imageData.data.set(data)
+            window.requestAnimationFrame(renderData);
+		}
+
+		let run
+		(async function() {
+		  const go = new Go()
+		  const { instance } = await WebAssembly.instantiateStreaming(fetch("demo.wasm"), go.importObject)
+		  run = go.run(instance)
+		})()
 	</script>
 
+	<style>
+		#original {
+    		transform: scale(2,2);
+    		padding-top: 90px;
+    		padding-left: 120px;
+		}
+
+		#processed {
+     		transform: scale(2,2);
+     		padding-top:  90px;
+     		padding-left: 270px;
+		}
+	</style>
+
 	<video id="source" width="0" height="0" autoplay></video>
-	<canvas id="original" width="640" height="480"></canvas>	
-	<canvas id="processed" width="640" height="480"></canvas>	
-	</br>
-	<button onClick="run();" id="runButton" disabled>Run</button>
-	<button onClick="renderOriginal();" id="renderButton" disabled>Render</button>
+	<canvas id="original" width="320" height="240"></canvas>	
+	<canvas id="processed" width="320" height="240"></canvas>	
 </body>
 
 </html>
